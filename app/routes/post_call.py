@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import logging
 import asyncio
@@ -92,19 +93,34 @@ def calculate_duration(history: List[Dict[str, Any]]) -> int:
 
 def normalize_user_id(raw: str) -> str:
     """Normalize any HelloGard User Code variant to the canonical HG_XXX format.
-    Handles: HG_002, HG-002, HG 002, HG002, hg_002, hg002, etc.
+
+    Handles separator variants:
+      HG-002, HG 002, HG002, hg_002 → HG_002
+
+    Handles phonetic/voice-recognition mishearing of "HG":
+      HJD008, HGD008, HDG008, HJ008 → HG_008
+      (voice often garbles the G into J, D, or adds extra consonants)
+
+    Strategy: all valid codes are HG_000–HG_999. If a string starts with H,
+    has 0–3 consonant noise letters, then ends in 1–3 digits, treat it as an
+    HG code. The numeric suffix is the authoritative part.
     """
     if not isinstance(raw, str):
         return raw
-    # Strip whitespace, uppercase
     s = raw.strip().upper()
-    # Replace any separator (hyphen, space, dot) between prefix and digits with underscore
-    import re as _re
-    # Match: HG followed by optional separator then digits
-    m = _re.fullmatch(r"HG[\s\-_\.]*(\d+)", s)
+
+    # Pass 1 — exact HG prefix with any separator
+    m = re.fullmatch(r"HG[\s\-_\.]*(\d{1,3})", s)
     if m:
         return f"HG_{m.group(1).zfill(3)}"
-    return raw  # Return unchanged if pattern doesn't match
+
+    # Pass 2 — phonetic misrecognition: H + 0–3 garbled letters + 1–3 digits
+    # Catches HJD008, HGD008, HDG008, HJ008, H008, etc.
+    m = re.fullmatch(r"H[A-Z]{0,3}[\s\-_\.]*(\d{1,3})", s)
+    if m:
+        return f"HG_{m.group(1).zfill(3)}"
+
+    return raw  # unrecognisable — return unchanged
 
 
 def parse_agent_json(response_str: str) -> Dict[str, Any]:

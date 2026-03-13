@@ -51,6 +51,17 @@ async def shutdown_event():
     logger.info("Voice AI API shutting down")
 
 
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Global exception caught: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal Server Error", "error": str(exc)},
+    )
+
 # Enable CORS — origins controlled via CORS_ORIGINS env var
 app.add_middleware(
     CORSMiddleware,

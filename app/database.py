@@ -11,6 +11,10 @@ db = Database()
 
 async def connect_to_mongo():
     """Connect to MongoDB"""
+    if not settings.MONGODB_URI:
+        logger.error("❌ MONGODB_URI is not set in environment variables.")
+        raise ValueError("MONGODB_URI environment variable is required")
+
     try:
         db.client = AsyncIOMotorClient(settings.MONGODB_URI)
         # Test connection

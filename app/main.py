@@ -12,16 +12,20 @@ logger = logging.getLogger(__name__)
 
 async def seed_default_admin():
     """Create the default admin account if it doesn't already exist."""
-    from passlib.context import CryptContext
+    import bcrypt
     from datetime import datetime, date
-    pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
     db = get_database()
     existing = await db["login"].find_one({"username": settings.ADMIN_USERNAME})
     if not existing:
+        # Direct bcrypt hashing
+        salt = bcrypt.gensalt()
+        pwd_bytes = settings.ADMIN_PASSWORD.encode('utf-8')
+        hashed_password = bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
+
         await db["login"].insert_one({
             "username": settings.ADMIN_USERNAME,
             "name": settings.ADMIN_NAME,
-            "password_hash": pwd_ctx.hash(settings.ADMIN_PASSWORD),
+            "password_hash": hashed_password,
             "status": "active",
             "role": "admin",
             "created_at": datetime.utcnow(),

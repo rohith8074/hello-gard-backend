@@ -1,12 +1,11 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from passlib.context import CryptContext
+import bcrypt
 from datetime import datetime, date
 from app.database import get_database
 from app.middleware.auth_deps import create_access_token, get_current_user
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
-pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 class RegisterRequest(BaseModel):
@@ -33,10 +32,15 @@ async def register(body: RegisterRequest):
     if existing:
         raise HTTPException(status_code=409, detail="Username already taken")
 
+    # Direct bcrypt hashing
+    salt = bcrypt.gensalt()
+    pwd_bytes = body.password.encode('utf-8')
+    hashed_password = bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
+
     user = {
         "username": body.username.lower().strip(),
         "name": body.name.strip(),
-        "password_hash": pwd_ctx.hash(body.password),
+        "password_hash": hashed_password,
         "status": "pending",          # waits for admin approval
         "role": "operator",           # default role
         "created_at": datetime.utcnow(),
@@ -57,7 +61,15 @@ async def login(body: LoginRequest):
     db = get_database()
     user = await db["login"].find_one({"username": body.username.lower().strip()})
 
-    if not user or not pwd_ctx.verify(body.password, user["password_hash"]):
+    # Direct bcrypt verification
+    if user:
+        pwd_bytes = body.password.encode('utf-8')
+        hash_bytes = user["password_hash"].encode('utf-8')
+        is_valid = bcrypt.checkpw(pwd_bytes, hash_bytes)
+    else:
+        is_valid = False
+
+    if not user or not is_valid:
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
     token = create_access_token({"sub": user["username"]})

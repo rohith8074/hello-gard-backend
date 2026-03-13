@@ -20,9 +20,9 @@ class Settings:
     LYZR_API_BASE: str = LYZR_VOICE_BASE
     LYZR_CHAT_API_BASE: str = LYZR_CHAT_BASE
 
-    # MongoDB Configuration
-    MONGODB_URI: str = os.getenv("Mongodb_URI", "")
-    DATABASE_NAME: str = os.getenv("Databse_name", "HelloGard").strip()
+    # MongoDB Configuration — try standard names first, fallback to legacy/typo names
+    MONGODB_URI: str = os.getenv("MONGODB_URI") or os.getenv("Mongodb_URI", "")
+    DATABASE_NAME: str = (os.getenv("DATABASE_NAME") or os.getenv("Databse_name") or "HelloGard").strip()
 
     # Security
     JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "hellguard-rbac-secret-2024-change-in-prod")

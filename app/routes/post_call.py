@@ -17,11 +17,18 @@ logger = logging.getLogger(__name__)
 
 # OpenAI dependencies removed in favor of Lyzr Agent API integration.
 
+# Logic to find the prompt file: Check both local (Docker/Moved) and legacy locations.
 PROMPT_FILE_PATH = os.path.abspath(os.path.join(
     os.path.dirname(__file__), 
-    "../../../../agent_prompts/Post_Call_Intelligence_Agent.md"
+    "../../agent_prompts/Post_Call_Intelligence_Agent.md"
 ))
 
+if not os.path.exists(PROMPT_FILE_PATH):
+    PROMPT_FILE_PATH = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), 
+        "../../../../agent_prompts/Post_Call_Intelligence_Agent.md"
+    ))
+    
 if not os.path.exists(PROMPT_FILE_PATH):
     PROMPT_FILE_PATH = os.path.abspath(os.path.join(
         os.path.dirname(__file__), 

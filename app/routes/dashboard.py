@@ -967,6 +967,8 @@ async def get_customer_insights(
 @router.get("/dashboard/customers/{user_id}")
 async def get_customer_detail(user_id: str):
     """Returns full detail for a specific user including their associated activities"""
+    from app.routes.post_call import normalize_user_id
+    user_id = normalize_user_id(user_id)
     db = get_database()
     user = await db["users"].find_one({"user_id": user_id}, {"_id": 0})
     if not user:

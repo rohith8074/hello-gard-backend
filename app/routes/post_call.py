@@ -90,6 +90,23 @@ def calculate_duration(history: List[Dict[str, Any]]) -> int:
         logger.warning(f"Failed to calculate duration: {e}")
         return 0
 
+def normalize_user_id(raw: str) -> str:
+    """Normalize any HelloGard User Code variant to the canonical HG_XXX format.
+    Handles: HG_002, HG-002, HG 002, HG002, hg_002, hg002, etc.
+    """
+    if not isinstance(raw, str):
+        return raw
+    # Strip whitespace, uppercase
+    s = raw.strip().upper()
+    # Replace any separator (hyphen, space, dot) between prefix and digits with underscore
+    import re as _re
+    # Match: HG followed by optional separator then digits
+    m = _re.fullmatch(r"HG[\s\-_\.]*(\d+)", s)
+    if m:
+        return f"HG_{m.group(1).zfill(3)}"
+    return raw  # Return unchanged if pattern doesn't match
+
+
 def parse_agent_json(response_str: str) -> Dict[str, Any]:
     """Robustly parse JSON output from the LLM."""
     try:
@@ -262,16 +279,17 @@ async def _process_post_call_inner(session_id: str):
     call_analysis["processed_at"] = datetime.now().isoformat()
     if caller_id: call_analysis["caller_id"] = caller_id
 
-    # Prefer the user_id extracted from the transcript by the agent (e.g. "user_000")
+    # Prefer the user_id extracted from the transcript by the agent
     # over the session's user_id which may be the operator's MongoDB ObjectId
     agent_user_id = call_analysis.get("user_id")
     user_id = agent_user_id or session_user_id
-    
-    # Normalize ID: Change HG004 -> HG_004 to match system consistency
-    if isinstance(user_id, str) and user_id.startswith("HG") and "_" not in user_id:
-        if len(user_id) > 2 and user_id[2:].isdigit():
-            user_id = f"HG_{user_id[2:]}"
-            logger.info(f"Normalized user_id: {agent_user_id} -> {user_id}")
+
+    # Normalize to canonical HG_XXX format (handles HG-002, HG 002, HG002, hg_2, etc.)
+    if user_id:
+        normalized = normalize_user_id(user_id)
+        if normalized != user_id:
+            logger.info(f"Normalized user_id: '{user_id}' -> '{normalized}'")
+            user_id = normalized
             
     if user_id:
         call_analysis["user_id"] = user_id

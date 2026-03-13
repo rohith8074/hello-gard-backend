@@ -540,13 +540,23 @@ async def get_dashboard_summary(product: Optional[str] = None, start_date: Optio
     }
 
 @router.get("/dashboard/escalations")
-async def get_escalation_tickets(product: Optional[str] = None, start_date: Optional[str] = None, end_date: Optional[str] = None):
-    """Returns escalation tickets with user info, optionally filtered by product and date range"""
+async def get_escalation_tickets(
+    product: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    status: Optional[str] = None,
+):
+    """Returns escalation tickets filtered by product, date range, and status.
+    Defaults to active tickets only (open + in_progress). Pass status=all to include closed/resolved."""
     db = get_database()
-    match_stage = {}
+    match_stage: dict = {}
     if product and product != "all":
         match_stage["product"] = product
-    
+
+    # Default: only active (open + in_progress) tickets for the dashboard count
+    if status != "all":
+        match_stage["status"] = {"$in": ["open", "in_progress"]}
+
     if start_date and end_date:
         match_stage["created_at"] = {"$gte": start_date, "$lte": end_date + "T23:59:59"}
 
@@ -578,8 +588,11 @@ async def get_escalation_tickets(product: Optional[str] = None, start_date: Opti
             "session_id": "$call_id",
             "user_id": "$resolved_user_id",
             "issue": 1,
+            "reason": 1,
+            "summary": 1,
             "status": 1,
             "priority": 1,
+            "category": 1,
             "product": 1,
             "created_at": 1,
             "user_name": "$user_info.name",
@@ -590,8 +603,12 @@ async def get_escalation_tickets(product: Optional[str] = None, start_date: Opti
     ]
 
     tickets = await db["escalation_tickets"].aggregate(pipeline).to_list(length=50)
-    total = await db["escalation_tickets"].count_documents(match_stage)
-    return {"success": True, "tickets": tickets, "total": total}
+    # Count only active tickets (same filter as the list)
+    active_count = await db["escalation_tickets"].count_documents(match_stage)
+    # Separate total-all count for reference
+    all_count_stage = {k: v for k, v in match_stage.items() if k != "status"}
+    total_all = await db["escalation_tickets"].count_documents(all_count_stage)
+    return {"success": True, "tickets": tickets, "total": active_count, "total_all": total_all}
 
 @router.get("/dashboard/sales-leads")
 async def get_sales_leads(product: Optional[str] = None, start_date: Optional[str] = None, end_date: Optional[str] = None):

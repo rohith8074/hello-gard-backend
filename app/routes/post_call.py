@@ -15,6 +15,10 @@ from app.lib.agents import lyzr_manager
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+# In-memory lock: prevents two concurrent callers from analyzing the same session simultaneously.
+# e.g. session/end fire-and-forget task + user clicking Refresh at the same time.
+_processing: set = set()
+
 # OpenAI dependencies removed in favor of Lyzr Agent API integration.
 
 # Logic to find the prompt file: Check both local (Docker/Moved) and legacy locations.
@@ -181,6 +185,21 @@ async def process_post_call(session_id: str):
     Main route to process a transcript immediately after call completion.
     It passes the transcript to the Lyzr Post-Call Agent for JSON analysis.
     """
+    # Guard: if another coroutine is already analyzing this session (e.g. fire-and-forget
+    # task from session/end + user clicked Refresh at the same time), return immediately
+    # so we don't call Lyzr twice or create duplicate escalation/lead records.
+    if session_id in _processing:
+        logger.info(f"Post-call analysis already in progress for {session_id} — skipping duplicate call")
+        return {"status": "already_processing"}
+    _processing.add(session_id)
+
+    try:
+        return await _process_post_call_inner(session_id)
+    finally:
+        _processing.discard(session_id)
+
+
+async def _process_post_call_inner(session_id: str):
     db = get_database()
     transcript_doc = await db["transcripts"].find_one({"sessionId": session_id})
 

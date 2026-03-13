@@ -178,10 +178,18 @@ async def end_web_session(session_id: str, body: SessionEndRequest = Body(defaul
         except Exception as e:
             logger.error(f"Failed to save transcript: {e}")
 
-        # 4. Trigger post-call analysis (fire-and-forget)
+        # 4. Trigger post-call analysis (fire-and-forget with error logging)
         try:
             from app.routes.post_call import process_post_call
-            asyncio.create_task(process_post_call(session_id))
+
+            async def _run_post_call(sid: str):
+                try:
+                    await process_post_call(sid)
+                    print(f"\033[95m\033[1m📊 [POST-CALL]\033[0m Analysis complete for {sid}")
+                except Exception as exc:
+                    logger.error(f"Post-call analysis failed for {sid}: {exc}", exc_info=True)
+
+            asyncio.create_task(_run_post_call(session_id))
             print(f"\033[95m\033[1m📊 [POST-CALL]\033[0m Analysis triggered for {session_id}")
         except Exception as e:
             logger.error(f"Failed to trigger post-call: {e}")

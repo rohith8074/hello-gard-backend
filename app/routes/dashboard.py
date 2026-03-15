@@ -41,6 +41,12 @@ logger = logging.getLogger(__name__)
 # In-memory job store for refresh polling
 _refresh_jobs: dict = {}
 
+async def _get_identified_uids():
+    """Helper to fetch all registered user_ids from the CRM collection"""
+    db = get_database()
+    users = await db["users"].find({}, {"user_id": 1}).to_list(None)
+    return [u["user_id"] for u in users]
+
 @router.get("/dashboard/active-calls")
 async def get_active_calls():
     """Returns the count of currently active voice/web sessions"""
@@ -57,6 +63,9 @@ async def get_rag_metrics(product: Optional[str] = None, start_date: Optional[st
     
     if start_date and end_date:
         query["processed_at"] = {"$gte": start_date, "$lte": end_date + "T23:59:59"}
+
+    # Consistency Filter
+    query["user_id"] = {"$in": await _get_identified_uids()}
 
     # 1. Average KB Confidence
     confidence_pipeline = [
@@ -229,6 +238,9 @@ async def get_dashboard_metrics(days: int = 7, product: Optional[str] = None, st
     if product and product != "all":
         match_query["product"] = product
 
+    # Consistency Filter
+    match_query["user_id"] = {"$in": await _get_identified_uids()}
+
     pipeline = [
         {"$match": match_query},
         {"$group": {
@@ -292,6 +304,9 @@ async def get_recent_calls(limit: int = 20, skip: int = 0, product: Optional[str
     
     if start_date and end_date:
         match_query["processed_at"] = {"$gte": start_date, "$lte": end_date + "T23:59:59"}
+
+    # Consistency Filter
+    match_query["user_id"] = {"$in": await _get_identified_uids()}
 
     pipeline = [
         {"$match": match_query},
@@ -488,6 +503,9 @@ async def get_dashboard_summary(product: Optional[str] = None, start_date: Optio
     if start_date and end_date:
         query["processed_at"] = {"$gte": start_date, "$lte": end_date + "T23:59:59"}
 
+    # Consistency Filter
+    query["user_id"] = {"$in": await _get_identified_uids()}
+
     total_calls = await db["calls"].count_documents(query)
     resolved = await db["calls"].count_documents({**query, "outcome": "resolved"})
     escalated = await db["calls"].count_documents({**query, "outcome": "escalated"})
@@ -557,6 +575,9 @@ async def get_escalation_tickets(
     if status != "all":
         match_stage["status"] = {"$in": ["open", "in_progress"]}
 
+    # Consistency Filter
+    match_stage["user_id"] = {"$in": await _get_identified_uids()}
+
     if start_date and end_date:
         match_stage["created_at"] = {"$gte": start_date, "$lte": end_date + "T23:59:59"}
 
@@ -612,9 +633,11 @@ async def get_escalation_tickets(
 
 @router.get("/dashboard/sales-leads")
 async def get_sales_leads(product: Optional[str] = None, start_date: Optional[str] = None, end_date: Optional[str] = None):
-    """Returns sales leads with user info, optionally filtered by product and date range"""
     db = get_database()
-    match_stage = {}
+    match_stage: dict = {}
+    # Consistency Filter
+    match_stage["user_id"] = {"$in": await _get_identified_uids()}
+
     if product and product != "all":
         match_stage["product"] = product
     
@@ -710,9 +733,10 @@ async def get_customer_profiles(
     ticket_date_f = {}
     lead_date_f = {}
     if start_date and end_date:
-        call_date_f = {"processed_at": {"$gte": start_date, "$lte": end_date}}
-        ticket_date_f = {"created_at": {"$gte": start_date, "$lte": end_date}}
-        lead_date_f = {"detected_at": {"$gte": start_date, "$lte": end_date}}
+        end_date_full = end_date if "T" in end_date else end_date + "T23:59:59"
+        call_date_f = {"processed_at": {"$gte": start_date, "$lte": end_date_full}}
+        ticket_date_f = {"created_at": {"$gte": start_date, "$lte": end_date_full}}
+        lead_date_f = {"detected_at": {"$gte": start_date, "$lte": end_date_full}}
     elif start_date:
         call_date_f = {"processed_at": {"$gte": start_date}}
         ticket_date_f = {"created_at": {"$gte": start_date}}
@@ -729,9 +753,9 @@ async def get_customer_profiles(
     ]).to_list(500)
     call_map = {r["_id"]: r for r in call_stats}
 
-    # Batch: ticket counts per user (1 query)
+    # Batch: ticket counts per user — active only (open + in_progress)
     ticket_stats = await db["escalation_tickets"].aggregate([
-        {"$match": {"user_id": {"$in": uids}, **ticket_date_f}},
+        {"$match": {"user_id": {"$in": uids}, "status": {"$in": ["open", "in_progress"]}, **ticket_date_f}},
         {"$group": {"_id": "$user_id", "count": {"$sum": 1}}}
     ]).to_list(500)
     ticket_map = {r["_id"]: r["count"] for r in ticket_stats}
@@ -817,9 +841,10 @@ async def get_customer_insights(
     ticket_date_f: dict = {}
     lead_date_f: dict = {}
     if start_date and end_date:
-        call_date_f = {"processed_at": {"$gte": start_date, "$lte": end_date}}
-        ticket_date_f = {"created_at": {"$gte": start_date, "$lte": end_date}}
-        lead_date_f = {"detected_at": {"$gte": start_date, "$lte": end_date}}
+        end_date_full = end_date if "T" in end_date else end_date + "T23:59:59"
+        call_date_f = {"processed_at": {"$gte": start_date, "$lte": end_date_full}}
+        ticket_date_f = {"created_at": {"$gte": start_date, "$lte": end_date_full}}
+        lead_date_f = {"detected_at": {"$gte": start_date, "$lte": end_date_full}}
     elif start_date:
         call_date_f = {"processed_at": {"$gte": start_date}}
         ticket_date_f = {"created_at": {"$gte": start_date}}
@@ -842,9 +867,9 @@ async def get_customer_insights(
     ]).to_list(500)
     call_map = {r["_id"]: r for r in call_stats}
 
-    # Batch: tickets per user (1 query)
+    # Batch: tickets per user — active only (open + in_progress)
     ticket_stats = await db["escalation_tickets"].aggregate([
-        {"$match": {"user_id": {"$in": uids}, **ticket_date_f}},
+        {"$match": {"user_id": {"$in": uids}, "status": {"$in": ["open", "in_progress"]}, **ticket_date_f}},
         {"$group": {"_id": "$user_id", "count": {"$sum": 1}}}
     ]).to_list(500)
     ticket_map = {r["_id"]: r["count"] for r in ticket_stats}
@@ -948,7 +973,7 @@ async def get_customer_insights(
     return {
         "success": True,
         "summary": {
-            "avg_csat": round(sum(i["score"] for i in insights) / len(insights), 1) if insights else 0,
+            "avg_csat": round(sum(i["avg_csat"] for i in [call_map.get(u["user_id"], {}) for u in users] if i.get("avg_csat")) / len([i for i in [call_map.get(u["user_id"], {}) for u in users] if i.get("avg_csat")]) , 1) if any(call_map.get(u["user_id"], {}).get("avg_csat") for u in users) else 0,
             "total_calls": sum(i["calls"] for i in insights),
             "total_escalations": sum(i["tickets"] for i in insights),
             "total_leads": sum(i["leads"] for i in insights),
@@ -1182,6 +1207,9 @@ async def get_calendar_events(year: int = None, month: int = None, product: Opti
     query: dict = {"processed_at": {"$gte": first_day, "$lte": last_day}}
     if product and product != "all":
         query["product"] = product
+
+    # Consistency Filter
+    query["user_id"] = {"$in": await _get_identified_uids()}
 
     pipeline = [
         {"$match": query},

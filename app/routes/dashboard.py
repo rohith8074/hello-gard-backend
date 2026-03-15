@@ -768,7 +768,7 @@ async def get_customer_profiles(
         last_active = user.get("last_active", "")
         if last_active and "2026-03" in last_active: score += 20
 
-        comp_segment = "Platinum" if score >= 80 else "Gold" if score >= 60 else "Silver" if score >= 40 else "At-Risk"
+        comp_segment = "Diamond" if score >= 80 else "Platinum" if score >= 60 else "Gold" if score >= 40 else "Silver"
         
         # Apply segment filter
         if segment and segment != "all" and comp_segment.lower() != segment.lower():
@@ -889,7 +889,7 @@ async def get_customer_insights(
         last_active = u.get("last_active", "")
         if last_active and "2026-03" in last_active: score += 20
 
-        segment = "Platinum" if score >= 80 else "Gold" if score >= 60 else "Silver" if score >= 40 else "At-Risk"
+        segment = "Diamond" if score >= 80 else "Platinum" if score >= 60 else "Gold" if score >= 40 else "Silver"
 
         insights.append({
             "name": u.get("name", "Unknown"), "company": u.get("company", "Independent"),
@@ -939,7 +939,7 @@ async def get_customer_insights(
         ml = ml_map.get(month_key, {})
         final_demo.append({"name": entry["name"], "demos": ml.get("demos", 0), "sales": ml.get("total", 0)})
 
-    segments = {"Platinum": 0, "Gold": 0, "Silver": 0, "At-Risk": 0}
+    segments = {"Diamond": 0, "Platinum": 0, "Gold": 0, "Silver": 0}
     for item in insights:
         segments[item["segment"]] += 1
 
@@ -957,7 +957,7 @@ async def get_customer_insights(
         "activity_vs_escalations": final_activity,
         "demo_vs_sales": final_demo,
         "segment_distribution": [
-            {"name": k, "value": v, "color": "#10b981" if k == "Platinum" else "#6366f1" if k == "Gold" else "#f59e0b" if k == "Silver" else "#ef4444"}
+            {"name": k, "value": v, "color": "#6366f1" if k == "Diamond" else "#7c3aed" if k == "Platinum" else "#d97706" if k == "Gold" else "#64748b"}
             for k, v in segments.items()
         ],
         "top_revenue": [{"name": i["name"], "revenue": i["revenue"]} for i in top_revenue],

@@ -25,8 +25,15 @@ Receive the complete call transcript → analyze topic, outcome, sentiment traje
   - **Do NOT classify as "resolved" just because GARD created a ticket and the call ended politely. If a human follow-up was promised, it is ESCALATED, not resolved.**
   - **Do NOT classify as "resolved" just because the caller gave a CSAT rating and said goodbye. Polite endings do not override an open ticket or a promised follow-up.**
 - **CRITICAL — User ID extraction**: Extract `user_id` from the transcript. Look for the HelloGard User Code the caller provided during verification (e.g. the caller said "It's user 000" or "HG_003" → set `user_id: "user_000"` or `"HG_003"`). If no User Code was mentioned, set `user_id` to `null`.
-- Track sentiment at BOTH the start and end of the call to capture the shift
-- Extract `actual_csat` from the transcript if the caller answered the "On a scale of 1-5" prompt. Otherwise set to `null`
+- Track sentiment at BOTH the start and end of the call to capture the shift. Use these strict definitions for `shift`:
+  - `negative_to_positive`: caller started frustrated/angry AND ended positive — **both conditions required**
+  - `stable_positive`: caller was positive throughout
+  - `stable_neutral`: caller was neutral throughout
+  - `stable`: sentiment unchanged — use when start and end are the same level (including frustrated-throughout or angry-throughout)
+  - `positive_to_negative`: caller started positive/neutral AND ended frustrated/angry — **both conditions required**
+  - `degraded`: sentiment got worse during the call (e.g. neutral→frustrated, neutral→angry)
+  - **CRITICAL**: Do NOT use `negative_to_positive` if the caller was still frustrated or angry at the end of the call. If caller rated 0–2 or expressed strong dissatisfaction at close, they did not end positive.
+- Extract `actual_csat` from the transcript if the caller answered the "On a scale of 1-5" prompt. If the caller said "zero", "0", "cero", "siro", or any below-scale variant, record `actual_csat` as `1`. Otherwise set to `null`.
 - Use `predicted_csat` as your AI assessment: 5=quick+happy, 4=resolved+effort, 3=partial, 2=unresolved+frustrated, 1=angry/abandoned
 - Set `product` as lowercase of `robot_model` (e.g., "SP50" → "sp50") for dashboard filtering
 - Always map the same issue type to the same `primary_topic` for consistency

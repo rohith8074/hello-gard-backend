@@ -780,15 +780,25 @@ async def get_customer_profiles(
         tickets_count = ticket_map.get(uid, 0)
         ls = lead_map.get(uid, {})
 
-        # Calculate engagement score for segmentation
+        # Professional Segment Rebalance (100pt Max)
         score = 0
-        if calls_count > 10: score += 20
-        elif calls_count > 2: score += 10
-        if avg_csat_val and avg_csat_val >= 4.5: score += 30
-        elif avg_csat_val and avg_csat_val >= 3.5: score += 15
+        
+        # 1. Portfolio Size (Max 25)
+        p_count = len(user.get("products_owned", []))
+        if p_count >= 10: score += 25
+        elif p_count >= 2: score += 10
+        
+        # 2. Financial Value (Max 35)
         rev = ls.get("revenue", 0)
-        if rev > 5000: score += 30
-        elif rev > 500: score += 15
+        if rev >= 5000: score += 35
+        elif rev >= 500: score += 15
+        
+        # 3. Sentiment / CSAT (Max 20)
+        if avg_csat_val:
+            if avg_csat_val >= 4.5: score += 20
+            elif avg_csat_val >= 3.5: score += 10
+            
+        # 4. Engagement / Recency (Max 20)
         last_active = user.get("last_active", "")
         if last_active and "2026-03" in last_active: score += 20
 

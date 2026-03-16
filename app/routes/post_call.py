@@ -120,6 +120,15 @@ def normalize_user_id(raw: str) -> str:
     if m:
         return f"HG_{m.group(1).zfill(3)}"
 
+    # Pass 3 - number words mishearing (e.g. "Wan" for "1")
+    number_words = {
+        "WAN": "001", "ONE": "001", "TU": "002", "TWO": "002", "THREE": "003", 
+        "FOUR": "004", "FOR": "004", "FIVE": "005", "SIX": "006", "SEVEN": "007", 
+        "EIGHT": "008", "NINE": "009", "ZERO": "000"
+    }
+    if s in number_words:
+        return f"HG_{number_words[s]}"
+
     return raw  # unrecognisable — return unchanged
 
 

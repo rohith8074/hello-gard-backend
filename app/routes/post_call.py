@@ -168,7 +168,7 @@ async def update_daily_metrics(db, call_analysis: Dict[str, Any]):
             "total_calls": 1,
         },
         "$set": {
-            "updated_at": datetime.now().isoformat()
+            "updated_at": datetime.utcnow().isoformat() + "Z"
         },
         "$setOnInsert": {
             "date": today,
@@ -258,7 +258,7 @@ async def _process_post_call_inner(session_id: str):
     
     agent_input = json.dumps({
         "call_id": session_id,
-        "timestamp": transcript_doc.get("timestamp", datetime.now().isoformat()),
+        "timestamp": transcript_doc.get("timestamp", datetime.utcnow().isoformat() + "Z"),
         "duration_seconds": calculate_duration(history),
         "transcript_text": transcript_text,
     })
@@ -292,7 +292,7 @@ async def _process_post_call_inner(session_id: str):
     # 5. Enrich Analysis dict
     call_analysis["call_id"] = session_id
     call_analysis["session_id"] = session_id
-    call_analysis["processed_at"] = datetime.now().isoformat()
+    call_analysis["processed_at"] = datetime.utcnow().isoformat() + "Z"
     if caller_id: call_analysis["caller_id"] = caller_id
 
     # Prefer the user_id extracted from the transcript by the agent
@@ -344,7 +344,7 @@ async def _process_post_call_inner(session_id: str):
                         "lyzr_session_id": lyzr_sid,
                         "audio_data": Binary(audio_resp.content),
                         "content_type": audio_resp.headers.get("Content-Type", "audio/ogg"),
-                        "created_at": datetime.now().isoformat()
+                        "created_at": datetime.utcnow().isoformat() + "Z"
                     }
                     await db["call_audios"].insert_one(audio_doc)
                     print(f"\033[96m\033[1m🍃 [MONGODB]\033[0m Audio saved to collection 'call_audios' for {session_id}")
@@ -386,7 +386,7 @@ async def _process_post_call_inner(session_id: str):
             "status": "open",
             "priority": t_info.get("priority", "high"),
             "category": t_info.get("category", "hardware"),
-            "created_at": datetime.now().isoformat(),
+            "created_at": datetime.utcnow().isoformat() + "Z",
             "summary": t_info.get("recap") or clean_analysis.get("summary", "Escalated call — see transcript for details"),
             "tags": clean_analysis.get("tags", []),
         }
@@ -415,7 +415,7 @@ async def _process_post_call_inner(session_id: str):
             "estimated_revenue": s_info.get("estimated_revenue", 0),
             "confidence": s_info.get("confidence_score", "medium"),
             "justification": s_info.get("justification", ""),
-            "detected_at": datetime.now().isoformat(),
+            "detected_at": datetime.utcnow().isoformat() + "Z",
             "source": "post_call_analysis",
         }
         await db["sales_leads"].insert_one(lead_doc)

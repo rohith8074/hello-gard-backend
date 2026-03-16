@@ -162,7 +162,7 @@ async def get_rag_metrics(product: Optional[str] = None, start_date: Optional[st
     top_docs_res = await db["calls"].aggregate(docs_pipeline).to_list(5)
 
     # 5. RAG Confidence Trend (Last 7 days)
-    trend_cutoff = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+    trend_cutoff = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
     trend_pipeline = [
         {"$match": {**query, "processed_at": {"$gte": trend_cutoff}, "rag_performance.citation_list": {"$exists": True, "$ne": []}}},
         {"$group": {
@@ -230,8 +230,8 @@ async def get_dashboard_metrics(days: int = 7, product: Optional[str] = None, st
         end_dt = datetime.strptime(end_date, "%Y-%m-%d")
         days = (end_dt - start_dt).days + 1
     else:
-        cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-        end_val = datetime.now().strftime("%Y-%m-%d")
+        cutoff = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
+        end_val = datetime.utcnow().strftime("%Y-%m-%d")
     
     # Base query for aggregation
     match_query: dict = {"processed_at": {"$gte": cutoff, "$lte": end_val + "T23:59:59"}}
@@ -275,7 +275,7 @@ async def get_dashboard_metrics(days: int = 7, product: Optional[str] = None, st
     if start_date and end_date:
         start_dt = datetime.strptime(start_date, "%Y-%m-%d")
     else:
-        start_dt = datetime.now() - timedelta(days=days - 1)
+        start_dt = datetime.utcnow() - timedelta(days=days - 1)
         
     metrics = []
     for i in range(days):
@@ -533,7 +533,7 @@ async def get_dashboard_summary(product: Optional[str] = None, start_date: Optio
     active_calls = len(sessions.keys())
 
     # Trend Calculation (Last 7 days vs Previous 7 days)
-    now = datetime.now()
+    now = datetime.utcnow()
     last_7_days = (now - timedelta(days=7)).isoformat()
     prev_7_days_start = (now - timedelta(days=14)).isoformat()
 

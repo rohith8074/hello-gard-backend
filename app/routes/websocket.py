@@ -29,7 +29,7 @@ async def log_interaction(session_id, role, content, agent_id=None):
             "agent_id": agent_id,
             "role": role,
             "content": content,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.utcnow().isoformat() + "Z"
         })
         print(f"\033[96m\033[1m🍃 [MONGODB]\033[0m Message turn captured in collection 'interaction_logs'")
     except Exception as e:
@@ -46,7 +46,7 @@ async def save_transcript(history, sid, lyzr_sid=None):
     data = {
         "sessionId": sid,
         "lyzrSessionId": lyzr_sid,
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.utcnow().isoformat() + "Z",
         "history": history,
         "type": "web" if str(sid).startswith("web") else "phone"
     }
@@ -127,7 +127,7 @@ async def web_websocket_proxy(websocket: WebSocket, sessionId: str, lyzrWs: str)
                                 sessions[sessionId]["history"].append({
                                     "role": role,
                                     "content": text,
-                                    "timestamp": timestamp
+                                    "timestamp": datetime.utcnow().isoformat() + "Z"
                                 })
                                 # NEW: Real-time logging to MongoDB
                                 agent_id = sessions[sessionId].get("agentId") # Trying to get agentId if available
@@ -157,7 +157,7 @@ async def web_websocket_proxy(websocket: WebSocket, sessionId: str, lyzrWs: str)
             db = get_database()
             await db["sessions"].update_one(
                 {"session_id": sessionId},
-                {"$set": {"status": "completed", "end_time": datetime.now().isoformat()}}
+                {"$set": {"status": "completed", "end_time": datetime.utcnow().isoformat() + "Z"}}
             )
             print(f"\033[96m\033[1m🍃 [MONGODB]\033[0m Session status marked 'completed' in collection 'sessions'")
         except Exception as e:

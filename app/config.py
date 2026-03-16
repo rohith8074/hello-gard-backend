@@ -33,7 +33,7 @@ class Settings:
 
     # CORS — comma-separated list of allowed origins, e.g. "https://app.hellaguard.com,http://localhost:3000"
     CORS_ORIGINS: list = [
-        o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()
+        o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()
     ]
 
     # Default admin seed (override via env in production)

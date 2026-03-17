@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routes import dashboard, agents, transcripts, session, websocket, post_call, auth, admin
+from app.routes import dashboard, agents, transcripts, session, websocket, post_call, auth, admin, kb_pages
 from app.database import connect_to_mongo, close_mongo_connection, get_database
 from app.config import settings
 import logging
@@ -83,6 +83,7 @@ app.include_router(agents.router, prefix="/api/v1")
 app.include_router(transcripts.router, prefix="/api/v1", tags=["Transcripts"])
 app.include_router(session.router, prefix="/api/v1", tags=["Session"])
 app.include_router(websocket.router, tags=["WebSocket"])
+app.include_router(kb_pages.router, prefix="/api/v1", tags=["KB Pages"])
 
 
 @app.get("/")

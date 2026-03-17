@@ -240,8 +240,8 @@ async def get_dashboard_metrics(days: int = 7, product: Optional[str] = None, st
     if product and product != "all":
         match_query["product"] = product
 
-    # Consistency Filter
-    match_query["user_id"] = {"$in": await _get_identified_uids()}
+    # Consistency filter bypassed for prototype — show all calls like /dashboard/calls
+    # match_query["user_id"] = {"$in": await _get_identified_uids()}
 
     pipeline = [
         {"$match": match_query},

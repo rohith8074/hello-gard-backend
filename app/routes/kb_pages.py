@@ -56,8 +56,9 @@ def citation_to_path(citation: str) -> str | None:
     """
     citation = citation.strip()
 
-    # Extract page number — accepts "p.32", "p32", "page 32", "page32"
-    page_match = re.search(r"p(?:age)?[\.\s]?(\d+)", citation, re.IGNORECASE)
+    # Extract page number — accepts "p.32", "p 32", "page 32", "page:32"
+    # Negative lookbehind prevents matching "SP50" (p preceded by a letter)
+    page_match = re.search(r"(?<![A-Za-z])p(?:age)?[\.\s:]+(\d+)", citation, re.IGNORECASE)
     if not page_match:
         return None
     page_num = int(page_match.group(1))

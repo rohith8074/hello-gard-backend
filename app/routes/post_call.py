@@ -120,11 +120,18 @@ def normalize_user_id(raw: str) -> str:
     if m:
         return f"HG_{m.group(1).zfill(3)}"
 
-    # Pass 3 - number words mishearing (e.g. "Wan" for "1")
+    # Pass 3 — bare digit shorthand: "0"–"11" → HG_000–HG_011
+    m = re.fullmatch(r"(\d{1,2})", s)
+    if m:
+        n = int(m.group(1))
+        if 0 <= n <= 11:
+            return f"HG_{str(n).zfill(3)}"
+
+    # Pass 4 — spoken number words (e.g. "Wan", "nine", "TEN")
     number_words = {
-        "WAN": "001", "ONE": "001", "TU": "002", "TWO": "002", "THREE": "003", 
-        "FOUR": "004", "FOR": "004", "FIVE": "005", "SIX": "006", "SEVEN": "007", 
-        "EIGHT": "008", "NINE": "009", "ZERO": "000"
+        "WAN": "001", "ONE": "001", "TU": "002", "TWO": "002", "THREE": "003",
+        "FOUR": "004", "FOR": "004", "FIVE": "005", "SIX": "006", "SEVEN": "007",
+        "EIGHT": "008", "NINE": "009", "ZERO": "000", "TEN": "010", "ELEVEN": "011"
     }
     if s in number_words:
         return f"HG_{number_words[s]}"
@@ -222,37 +229,38 @@ async def update_daily_metrics(db, call_analysis: Dict[str, Any]):
     # We do a basic approximation here, and do real recalculation in the GET method
 
 @router.post("/post-call/{session_id}")
-async def process_post_call(session_id: str):
+async def process_post_call(session_id: str, force: bool = False):
     """
     Main route to process a transcript immediately after call completion.
-    It passes the transcript to the Lyzr Post-Call Agent for JSON analysis.
+    Pass ?force=true to reprocess a call that was already analyzed (e.g. after a prompt update).
     """
-    # Guard: if another coroutine is already analyzing this session (e.g. fire-and-forget
-    # task from session/end + user clicked Refresh at the same time), return immediately
-    # so we don't call Lyzr twice or create duplicate escalation/lead records.
     if session_id in _processing:
         logger.info(f"Post-call analysis already in progress for {session_id} — skipping duplicate call")
         return {"status": "already_processing"}
     _processing.add(session_id)
 
     try:
-        return await _process_post_call_inner(session_id)
+        return await _process_post_call_inner(session_id, force=force)
     finally:
         _processing.discard(session_id)
 
 
-async def _process_post_call_inner(session_id: str):
+async def _process_post_call_inner(session_id: str, force: bool = False):
     db = get_database()
     transcript_doc = await db["transcripts"].find_one({"sessionId": session_id})
 
     if not transcript_doc:
         raise HTTPException(status_code=404, detail="Transcript not found")
 
-    # 2. Check if already processed
+    # 2. Check if already processed (skip unless force=True)
     existing = await db["calls"].find_one({"session_id": session_id})
-    if existing:
+    if existing and not force:
         existing.pop("_id", None)
         return {"status": "already_processed", "call_analysis": existing}
+    elif existing and force:
+        # Remove old record so the upsert below writes fresh data
+        await db["calls"].delete_one({"session_id": session_id})
+        logger.info(f"Force reprocess: removed stale call record for {session_id}")
 
     history = transcript_doc.get("history", [])
     session_user_id = transcript_doc.get("user_id") or transcript_doc.get("userId")
@@ -441,3 +449,76 @@ async def _process_post_call_inner(session_id: str):
         )
 
     return {"status": "success", "call_analysis": clean_analysis}
+
+
+@router.post("/post-call/sync-derived-data")
+async def sync_derived_data():
+    """
+    Back-fills escalation_tickets and sales_leads from the existing calls collection.
+    Runs against all calls where outcome='escalated' or sales_lead_info.is_lead=true
+    but no corresponding ticket/lead record exists yet.
+    Safe to call multiple times — skips sessions that already have records.
+    """
+    db = get_database()
+    tickets_created = 0
+    leads_created = 0
+
+    # --- Back-fill escalation tickets ---
+    escalated_calls = await db["calls"].find({"outcome": "escalated"}).to_list(length=500)
+    for call in escalated_calls:
+        sid = call.get("session_id") or call.get("call_id", "")
+        if not sid:
+            continue
+        already = await db["escalation_tickets"].find_one({"call_id": sid})
+        if already:
+            continue
+        t_info = call.get("ticket_info") or {}
+        ticket_doc = {
+            "ticket_id": f"ESC-{sid[:8].upper()}",
+            "call_id": sid,
+            "user_id": call.get("user_id"),
+            "reason": call.get("escalation_reason") or t_info.get("recap") or "Escalated — see transcript",
+            "product": call.get("product", "unknown"),
+            "status": "open",
+            "priority": t_info.get("priority", "high"),
+            "category": t_info.get("category", "other"),
+            "created_at": call.get("processed_at", datetime.utcnow().isoformat() + "Z"),
+            "summary": t_info.get("recap") or call.get("summary", ""),
+            "tags": call.get("tags", []),
+        }
+        await db["escalation_tickets"].insert_one(ticket_doc)
+        tickets_created += 1
+        logger.info(f"Sync: created ticket {ticket_doc['ticket_id']} for {sid}")
+
+    # --- Back-fill sales leads ---
+    lead_calls = await db["calls"].find({"sales_lead_info.is_lead": True}).to_list(length=500)
+    for call in lead_calls:
+        sid = call.get("session_id") or call.get("call_id", "")
+        if not sid:
+            continue
+        already = await db["sales_leads"].find_one({"call_id": sid})
+        if already:
+            continue
+        s_info = call.get("sales_lead_info") or {}
+        lead_doc = {
+            "lead_id": f"SALES-{sid[:8].upper()}",
+            "call_id": sid,
+            "user_id": call.get("user_id"),
+            "product": call.get("product", "unknown"),
+            "opportunity": s_info.get("opportunity_type") or call.get("primary_topic", "").replace("_", " ").title(),
+            "estimated_revenue": s_info.get("estimated_revenue", 0),
+            "confidence": s_info.get("confidence_score", "medium"),
+            "justification": s_info.get("justification", ""),
+            "detected_at": call.get("processed_at", datetime.utcnow().isoformat() + "Z"),
+            "source": "post_call_sync",
+        }
+        await db["sales_leads"].insert_one(lead_doc)
+        leads_created += 1
+        logger.info(f"Sync: created lead {lead_doc['lead_id']} for {sid}")
+
+    print(f"\033[96m\033[1m🍃 [SYNC]\033[0m Back-fill complete: {tickets_created} tickets, {leads_created} leads created")
+    return {
+        "status": "success",
+        "tickets_created": tickets_created,
+        "leads_created": leads_created,
+    }

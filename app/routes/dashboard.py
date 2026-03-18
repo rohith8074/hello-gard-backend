@@ -626,7 +626,12 @@ async def get_escalation_tickets(
             "created_at": 1,
             "user_name": "$user_info.name",
             "user_company": "$user_info.company",
-            "customer_sentiment": {"$ifNull": ["$call_info.customer_sentiment", "$customer_sentiment"]}
+            "customer_sentiment": {"$ifNull": [
+                "$call_info.customer_sentiment", 
+                "$call_info.sentiment.end",
+                "$customer_sentiment",
+                "Neutral"
+            ]}
         }},
         {"$sort": {"created_at": -1}},
         {"$limit": 50}
@@ -688,7 +693,12 @@ async def get_sales_leads(product: Optional[str] = None, start_date: Optional[st
             "detected_at": 1,
             "user_name": "$user_info.name",
             "user_company": "$user_info.company",
-            "customer_sentiment": {"$ifNull": ["$call_info.customer_sentiment", "$customer_sentiment"]}
+            "customer_sentiment": {"$ifNull": [
+                "$call_info.customer_sentiment", 
+                "$call_info.sentiment.end", 
+                "$customer_sentiment",
+                "Neutral"
+            ]}
         }},
         {"$sort": {"detected_at": -1}},
         {"$limit": 50}
